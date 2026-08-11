@@ -11,7 +11,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/sma-das/abuseipdb-mcp",
+      "identifier": "docker.io/smadas/abuseipdb-mcp",
       "transport": {
         "type": "stdio"
       },

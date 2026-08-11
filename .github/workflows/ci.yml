@@ -32,18 +32,45 @@ jobs:
         run: go build -trimpath ./cmd/abuseipdb-mcp
 
   container:
-    name: Build container
+    name: Build and publish container
     runs-on: ubuntu-latest
     steps:
       - name: Check out source
         uses: actions/checkout@v6
+      - name: Set up QEMU
+        if: github.event_name == 'push'
+        uses: docker/setup-qemu-action@v4
       - name: Set up Buildx
         uses: docker/setup-buildx-action@v4
-      - name: Build image
+      - name: Log in to Docker Hub
+        if: github.event_name == 'push'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ vars.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: docker.io/${{ vars.DOCKERHUB_USERNAME }}/abuseipdb-mcp
+          tags: |
+            type=raw,value=edge,enable=${{ github.event_name == 'push' }}
+            type=sha,enable=${{ github.event_name == 'push' }}
+            type=raw,value=ci,enable=${{ github.event_name == 'pull_request' }}
+      - name: Capture build date
+        id: build
+        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Build and optionally publish image
         uses: docker/build-push-action@v7
         with:
           context: .
-          push: false
-          tags: abuseipdb-mcp:ci
+          platforms: ${{ github.event_name == 'push' && 'linux/amd64,linux/arm64' || 'linux/amd64' }}
+          push: ${{ github.event_name == 'push' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ github.event_name == 'push' && 'edge' || 'ci' }}
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ steps.build.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max

@@ -3,6 +3,7 @@
 [![Go](https://img.shields.io/badge/Go-1.25+-00ADD8?logo=go&logoColor=white)](https://go.dev/)
 [![Model Context Protocol](https://img.shields.io/badge/MCP-2026--07--28-6f42c1)](https://modelcontextprotocol.io/)
 [![CI](https://github.com/Sma-Das/AbuseIPDB-MCP/actions/workflows/ci.yml/badge.svg)](https://github.com/Sma-Das/AbuseIPDB-MCP/actions/workflows/ci.yml)
+[![Docker Pulls](https://img.shields.io/docker/pulls/smadas/abuseipdb-mcp?logo=docker)](https://hub.docker.com/r/smadas/abuseipdb-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 A complete, dockerized **AbuseIPDB MCP server written in Go**. Connect an MCP-compatible AI assistant or security automation workflow to the AbuseIPDB API v2 for IP reputation checks, abuse-report history, CIDR analysis, blacklist retrieval, single and bulk abuse reporting, and report cleanup.
@@ -39,10 +40,10 @@ The server also publishes `abuseipdb://categories` and `abuseipdb://reporting-po
 
 ## Quick start with Docker
 
-Build the local image:
+Pull the multi-architecture image from Docker Hub:
 
 ```bash
-docker build -t abuseipdb-mcp:local .
+docker pull smadas/abuseipdb-mcp:edge
 ```
 
 Run it over stdio for a local MCP client:
@@ -50,7 +51,7 @@ Run it over stdio for a local MCP client:
 ```bash
 docker run --rm -i \
   -e ABUSEIPDB_API_KEY="your-api-v2-key" \
-  abuseipdb-mcp:local
+  smadas/abuseipdb-mcp:edge
 ```
 
 Example MCP client configuration:
@@ -63,7 +64,7 @@ Example MCP client configuration:
       "args": [
         "run", "--rm", "-i",
         "-e", "ABUSEIPDB_API_KEY",
-        "abuseipdb-mcp:local"
+        "smadas/abuseipdb-mcp:edge"
       ],
       "env": {
         "ABUSEIPDB_API_KEY": "your-api-v2-key"
@@ -74,6 +75,8 @@ Example MCP client configuration:
 ```
 
 Some clients pass the parent environment to Docker and do not need the nested `env` object. If your client substitutes environment variables in arguments, use that mechanism instead of storing a key directly in JSON.
+
+Every push to `main` publishes `edge` and an immutable `sha-<commit>` tag to [Docker Hub](https://hub.docker.com/r/smadas/abuseipdb-mcp). Git tags matching `v*` publish semantic-version tags and `latest` to both Docker Hub and GitHub Container Registry. Pull requests build the image without publishing it. To build locally instead, run `docker build -t abuseipdb-mcp:local .`.
 
 ## Streamable HTTP with Docker Compose
 
