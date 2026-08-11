@@ -1,0 +1,20 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the repository."
+title: "AbuseIPDB MCP Server in Go"
+type: software
+authors:
+  - family-names: "Das"
+    given-names: "Sma"
+repository-code: "https://github.com/Sma-Das/AbuseIPDB-MCP"
+url: "https://github.com/Sma-Das/AbuseIPDB-MCP"
+license: MIT
+version: 0.1.0
+date-released: 2026-08-10
+keywords:
+  - AbuseIPDB
+  - Model Context Protocol
+  - MCP server
+  - Go
+  - threat intelligence
+  - IP reputation
+  - cybersecurity

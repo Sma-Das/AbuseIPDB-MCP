@@ -1,0 +1,20 @@
+{
+  "name": "bulk_report",
+  "arguments": {
+    "reports": [
+      {
+        "ip_address": "198.51.100.42",
+        "categories": [18, 22],
+        "reported_at": "2026-08-10T20:15:00Z",
+        "comment": "Repeated failed SSH authentication against tcp/22; user identifiers removed"
+      },
+      {
+        "ip_address": "203.0.113.17",
+        "categories": [14],
+        "reported_at": "2026-08-10T20:20:00Z",
+        "comment": "Sequential TCP connection attempts against multiple closed ports"
+      }
+    ],
+    "confirm": true
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.sma-das/abuseipdb",
+  "title": "AbuseIPDB MCP Server in Go",
+  "description": "AbuseIPDB IP reputation, blacklist, CIDR analysis, and abuse reporting for AI assistants.",
+  "repository": {
+    "url": "https://github.com/Sma-Das/AbuseIPDB-MCP",
+    "source": "github"
+  },
+  "version": "0.1.0",
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/sma-das/abuseipdb-mcp",
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "description": "AbuseIPDB API v2 key",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true,
+          "name": "ABUSEIPDB_API_KEY"
+        }
+      ]
+    }
+  ]
+}

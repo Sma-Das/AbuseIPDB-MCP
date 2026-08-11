@@ -1,0 +1,20 @@
+services:
+  abuseipdb-mcp:
+    build:
+      context: .
+    image: abuseipdb-mcp:local
+    environment:
+      ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY:?Set ABUSEIPDB_API_KEY in your environment or .env file}
+      MCP_TRANSPORT: http
+      MCP_HTTP_ADDR: 0.0.0.0:8080
+      MCP_HTTP_BEARER_TOKEN: ${MCP_HTTP_BEARER_TOKEN:-}
+    ports:
+      - "127.0.0.1:8080:8080"
+    read_only: true
+    tmpfs:
+      - /tmp:size=1m,noexec,nosuid,nodev
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
