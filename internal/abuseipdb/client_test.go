@@ -2,6 +2,7 @@ package abuseipdb
 
 import (
 	"context"
+	"encoding/csv"
 	"errors"
 	"io"
 	"net/http"
@@ -10,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Sma-Das/AbuseIPDB-MCP/internal/reporting"
 )
 
 func TestClientCoversAllEndpoints(t *testing.T) {
@@ -69,12 +72,13 @@ func TestClientCoversAllEndpoints(t *testing.T) {
 				t.Fatal(err)
 			}
 			defer file.Close()
-			contents, err := io.ReadAll(file)
+			rows, err := csv.NewReader(file).ReadAll()
 			if err != nil {
 				t.Fatal(err)
 			}
-			if string(contents) != "IP,Categories,ReportDate,Comment\n" {
-				t.Errorf("CSV = %q", contents)
+			if len(rows) != 2 || rows[0][0] != "IP" || rows[1][0] != "2001:db8::1" ||
+				rows[1][1] != "18,22" || rows[1][3] != "attempt, with comma" {
+				t.Errorf("CSV rows = %#v", rows)
 			}
 		case "DELETE /api/v2/clear-address":
 			assertQuery(t, r.URL.Query(), "ipAddress", "192.0.2.3")
@@ -103,10 +107,18 @@ func TestClientCoversAllEndpoints(t *testing.T) {
 		func() (*Response, error) { return client.Reports(ctx, "192.0.2.1", 30, 2, 50) },
 		func() (*Response, error) { return client.Blacklist(ctx, 75, 500, 6, []string{"CA", "US"}, nil) },
 		func() (*Response, error) {
-			return client.Report(ctx, "192.0.2.2", []int{14, 18}, "port scan", "2026-08-01T00:00:00Z")
+			return client.Report(ctx, reporting.Report{
+				IPAddress: "192.0.2.2", Categories: []int{14, 18},
+				Comment: "port scan", ReportedAt: "2026-08-01T00:00:00Z",
+			})
 		},
 		func() (*Response, error) { return client.CheckBlock(ctx, "192.0.2.0/24", 15) },
-		func() (*Response, error) { return client.BulkReport(ctx, "IP,Categories,ReportDate,Comment\n") },
+		func() (*Response, error) {
+			return client.BulkReport(ctx, []reporting.Report{{
+				IPAddress: "2001:db8::1", Categories: []int{18, 22},
+				ReportedAt: "2026-08-01T01:00:00Z", Comment: "attempt, with comma",
+			}})
+		},
 		func() (*Response, error) { return client.ClearAddress(ctx, "192.0.2.3") },
 	}
 	for i, call := range calls {

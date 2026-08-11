@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Sma-Das/AbuseIPDB-MCP/internal/reporting"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -25,7 +26,7 @@ func registerResources(server *mcp.Server) {
 		Description: "The complete category ID reference for AbuseIPDB reports.",
 		MIMEType:    "application/json", URI: "abuseipdb://categories",
 	}, func(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-		data, err := json.MarshalIndent(map[string]any{"categories": Categories}, "", "  ")
+		data, err := json.MarshalIndent(map[string]any{"categories": reporting.Categories}, "", "  ")
 		if err != nil {
 			return nil, fmt.Errorf("encode categories: %w", err)
 		}

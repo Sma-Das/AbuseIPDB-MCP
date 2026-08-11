@@ -4,6 +4,7 @@ package abuseipdb
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -14,11 +15,14 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Sma-Das/AbuseIPDB-MCP/internal/reporting"
 )
 
 const (
 	DefaultBaseURL       = "https://api.abuseipdb.com/api/v2"
 	DefaultMaxResponse   = int64(16 << 20) // 16 MiB
+	MaxBulkCSVSize       = 8 << 20
 	defaultUserAgentName = "abuseipdb-mcp"
 )
 
@@ -171,17 +175,17 @@ func (c *Client) Blacklist(ctx context.Context, confidence, limit, ipVersion int
 	return c.do(ctx, http.MethodGet, "blacklist", q, "", nil)
 }
 
-// Report submits one abuse report with POST /report.
-func (c *Client) Report(ctx context.Context, ip string, categories []int, comment, timestamp string) (*Response, error) {
+// Report submits one validated abuse report with POST /report.
+func (c *Client) Report(ctx context.Context, report reporting.Report) (*Response, error) {
 	values := url.Values{
-		"ip":         {ip},
-		"categories": {joinInts(categories)},
+		"ip":         {report.IPAddress},
+		"categories": {joinInts(report.Categories)},
 	}
-	if comment != "" {
-		values.Set("comment", comment)
+	if report.Comment != "" {
+		values.Set("comment", report.Comment)
 	}
-	if timestamp != "" {
-		values.Set("timestamp", timestamp)
+	if report.ReportedAt != "" {
+		values.Set("timestamp", report.ReportedAt)
 	}
 	body := strings.NewReader(values.Encode())
 	return c.do(ctx, http.MethodPost, "report", nil, "application/x-www-form-urlencoded", body)
@@ -193,8 +197,13 @@ func (c *Client) CheckBlock(ctx context.Context, network string, maxAge int) (*R
 	return c.do(ctx, http.MethodGet, "check-block", q, "", nil)
 }
 
-// BulkReport uploads CSV data to POST /bulk-report.
-func (c *Client) BulkReport(ctx context.Context, csvData string) (*Response, error) {
+// BulkReport encodes validated abuse reports and uploads them to POST
+// /bulk-report.
+func (c *Client) BulkReport(ctx context.Context, reports []reporting.Report) (*Response, error) {
+	csvData, err := encodeBulkCSV(reports)
+	if err != nil {
+		return nil, err
+	}
 	var body bytes.Buffer
 	w := multipart.NewWriter(&body)
 	part, err := w.CreateFormFile("csv", "reports.csv")
@@ -208,6 +217,32 @@ func (c *Client) BulkReport(ctx context.Context, csvData string) (*Response, err
 		return nil, fmt.Errorf("finish bulk report upload: %w", err)
 	}
 	return c.do(ctx, http.MethodPost, "bulk-report", nil, w.FormDataContentType(), &body)
+}
+
+func encodeBulkCSV(reports []reporting.Report) (string, error) {
+	var body strings.Builder
+	w := csv.NewWriter(&body)
+	if err := w.Write([]string{"IP", "Categories", "ReportDate", "Comment"}); err != nil {
+		return "", fmt.Errorf("write bulk report header: %w", err)
+	}
+	for index, report := range reports {
+		if err := w.Write([]string{
+			report.IPAddress,
+			joinInts(report.Categories),
+			report.ReportedAt,
+			report.Comment,
+		}); err != nil {
+			return "", fmt.Errorf("write bulk report %d: %w", index, err)
+		}
+	}
+	w.Flush()
+	if err := w.Error(); err != nil {
+		return "", fmt.Errorf("encode bulk report CSV: %w", err)
+	}
+	if body.Len() >= MaxBulkCSVSize {
+		return "", fmt.Errorf("generated CSV must be under %d bytes", MaxBulkCSVSize)
+	}
+	return body.String(), nil
 }
 
 // ClearAddress deletes reports submitted by the authenticated account for an IP.

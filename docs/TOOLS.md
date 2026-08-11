@@ -49,7 +49,7 @@ Write tools require `confirm: true`. MCP clients should still show their normal 
 - `ip_address` (string, required): directly observed source IPv4 or IPv6 address.
 - `categories` (integer array, required): one or more category IDs from `1` through `23`.
 - `comment` (string, required by this server): detailed description, at most 1,024 bytes, with PII removed.
-- `reported_at` (string): optional RFC 3339 timestamp with timezone, no older than 60 days.
+- `reported_at` (string): optional RFC 3339 timestamp with timezone, no older than 60 days and not in the future.
 - `confirm` (boolean, required): must be `true`.
 
 The API prevents the same account from reporting the same IP more than once in 15 minutes.
@@ -59,7 +59,7 @@ The API prevents the same account from reporting the same IP more than once in 1
 - `reports` (array, required): `1` through `9,999` structured rows.
   - `ip_address`: valid IPv4 or IPv6 address.
   - `categories`: one or more IDs from `1` through `23`.
-  - `reported_at`: required RFC 3339 timestamp with timezone, no older than 60 days.
+  - `reported_at`: required RFC 3339 timestamp with timezone, no older than 60 days and not in the future.
   - `comment`: required description, at most 1,024 bytes, with PII removed.
 - `confirm` (boolean, required): must be `true`.
 
