@@ -14,7 +14,7 @@ const reportingPolicy = `AbuseIPDB reporting safety summary:
 - Do not report an address based only on its AbuseIPDB confidence score.
 - Remove personally identifiable information from comments.
 - Do not report traffic whose source is likely spoofed, including SYN or UDP floods.
-- Reports must describe the attack and must not be older than 60 days.
+- Reports must describe the attack; timestamps must not be older than 60 days or in the future.
 - A timestamp, destination port, and relevant payload detail are recommended.
 
 Authoritative policy: https://www.abuseipdb.com/reporting-policy

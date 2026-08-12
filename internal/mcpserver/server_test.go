@@ -2,6 +2,7 @@ package mcpserver
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
@@ -89,6 +90,15 @@ func TestMCPServerListsCompleteSurface(t *testing.T) {
 	if byName["report_ip"].Annotations.ReadOnlyHint {
 		t.Error("report_ip is incorrectly annotated read-only")
 	}
+	for _, name := range []string{"report_ip", "bulk_report"} {
+		schema, err := json.Marshal(byName[name].InputSchema)
+		if err != nil {
+			t.Fatalf("marshal %s input schema: %v", name, err)
+		}
+		if !strings.Contains(string(schema), "not in the future") {
+			t.Errorf("%s input schema omits the future-date restriction: %s", name, schema)
+		}
+	}
 
 	resources, err := session.ListResources(ctx, nil)
 	if err != nil {
@@ -103,6 +113,13 @@ func TestMCPServerListsCompleteSurface(t *testing.T) {
 	}
 	if len(read.Contents) != 1 || !strings.Contains(read.Contents[0].Text, "DNS Compromise") {
 		t.Fatalf("unexpected categories resource: %+v", read.Contents)
+	}
+	policy, err := session.ReadResource(ctx, &mcp.ReadResourceParams{URI: "abuseipdb://reporting-policy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(policy.Contents) != 1 || !strings.Contains(policy.Contents[0].Text, "or in the future") {
+		t.Fatalf("reporting policy omits the future-date restriction: %+v", policy.Contents)
 	}
 }
 

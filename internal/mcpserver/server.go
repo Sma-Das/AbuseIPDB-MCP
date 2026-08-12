@@ -66,7 +66,7 @@ type ReportIPInput struct {
 	IPAddress  string `json:"ip_address" jsonschema:"IPv4 or IPv6 source address that directly attacked a system you control"`
 	Categories []int  `json:"categories" jsonschema:"One or more AbuseIPDB category IDs from 1 through 23"`
 	Comment    string `json:"comment" jsonschema:"Detailed attack description with all personally identifiable information removed"`
-	ReportedAt string `json:"reported_at,omitempty" jsonschema:"Optional RFC 3339 attack timestamp no older than 60 days; defaults to the current time"`
+	ReportedAt string `json:"reported_at,omitempty" jsonschema:"Optional RFC 3339 attack timestamp no older than 60 days and not in the future; defaults to the current time"`
 	Confirm    bool   `json:"confirm" jsonschema:"Must be true to confirm this external write complies with the AbuseIPDB reporting policy"`
 }
 
@@ -83,7 +83,7 @@ type BulkReportInput struct {
 type BulkReportItem struct {
 	IPAddress  string `json:"ip_address" jsonschema:"IPv4 or IPv6 source address that directly attacked a system you control"`
 	Categories []int  `json:"categories" jsonschema:"One or more AbuseIPDB category IDs from 1 through 23"`
-	ReportedAt string `json:"reported_at" jsonschema:"RFC 3339 attack timestamp no older than 60 days"`
+	ReportedAt string `json:"reported_at" jsonschema:"RFC 3339 attack timestamp no older than 60 days and not in the future"`
 	Comment    string `json:"comment" jsonschema:"Detailed attack description with all personally identifiable information removed"`
 }
 
