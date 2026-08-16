@@ -43,7 +43,7 @@ The server also publishes `abuseipdb://categories` and `abuseipdb://reporting-po
 Pull the multi-architecture image from Docker Hub:
 
 ```bash
-docker pull smadas/abuseipdb-mcp:edge
+docker pull smadas/abuseipdb-mcp:latest
 ```
 
 Run it over stdio for a local MCP client:
@@ -51,7 +51,7 @@ Run it over stdio for a local MCP client:
 ```bash
 docker run --rm -i \
   -e ABUSEIPDB_API_KEY="your-api-v2-key" \
-  smadas/abuseipdb-mcp:edge
+  smadas/abuseipdb-mcp:latest
 ```
 
 Example MCP client configuration:
@@ -64,7 +64,7 @@ Example MCP client configuration:
       "args": [
         "run", "--rm", "-i",
         "-e", "ABUSEIPDB_API_KEY",
-        "smadas/abuseipdb-mcp:edge"
+        "smadas/abuseipdb-mcp:latest"
       ],
       "env": {
         "ABUSEIPDB_API_KEY": "your-api-v2-key"
@@ -76,7 +76,7 @@ Example MCP client configuration:
 
 Some clients pass the parent environment to Docker and do not need the nested `env` object. If your client substitutes environment variables in arguments, use that mechanism instead of storing a key directly in JSON.
 
-Every push to `main` publishes `edge` and an immutable `sha-<commit>` tag to [Docker Hub](https://hub.docker.com/r/smadas/abuseipdb-mcp). Git tags matching `v*` publish semantic-version tags and `latest` to both Docker Hub and GitHub Container Registry. Pull requests build the image without publishing it. To build locally instead, run `docker build -t abuseipdb-mcp:local .`.
+Release images are published to [Docker Hub](https://hub.docker.com/r/smadas/abuseipdb-mcp) and GitHub Container Registry from exact semantic-version tags. Stable releases receive full, minor, major, and `latest` tags; prereleases receive only their full prerelease version. CI builds the image without publishing it. For reproducible production deployment, pin a full version or immutable digest instead of a moving tag. To build locally, run `docker build -t abuseipdb-mcp:local .`.
 
 ## Streamable HTTP with Docker Compose
 

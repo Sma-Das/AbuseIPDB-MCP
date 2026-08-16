@@ -2,7 +2,7 @@
 
 All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and releases use [Semantic Versioning](https://semver.org/).
 
-## [Unreleased]
+## [1.0.0] - 2026-08-16
 
 ### Added
 
@@ -11,3 +11,7 @@ All notable changes follow [Keep a Changelog](https://keepachangelog.com/en/1.1.
 - Docker, Compose, health checks, bearer authentication, origin protection, and non-root runtime.
 - Structured rate-limit metadata, local validation, reporting guardrails, and MCP resources.
 - Unit tests, MCP integration tests, CI, race testing, release automation, and public documentation.
+
+### Changed
+
+- Publish containers only from exact semantic-version release tags, with stable full, minor, major, and `latest` tags and full-version-only prerelease tags.

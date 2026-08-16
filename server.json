@@ -7,7 +7,7 @@
     "url": "https://github.com/Sma-Das/AbuseIPDB-MCP",
     "source": "github"
   },
-  "version": "0.1.0",
+  "version": "1.0.0",
   "packages": [
     {
       "registryType": "oci",

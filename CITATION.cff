@@ -8,8 +8,8 @@ authors:
 repository-code: "https://github.com/Sma-Das/AbuseIPDB-MCP"
 url: "https://github.com/Sma-Das/AbuseIPDB-MCP"
 license: MIT
-version: 0.1.0
-date-released: 2026-08-10
+version: 1.0.0
+date-released: 2026-08-16
 keywords:
   - AbuseIPDB
   - Model Context Protocol

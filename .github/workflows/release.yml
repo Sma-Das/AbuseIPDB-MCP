@@ -1,9 +1,16 @@
-name: Release
+name: Publish release
 
 on:
   push:
     tags:
       - 'v*'
+
+env:
+  RELEASE_REF: ${{ github.ref_name }}
+
+concurrency:
+  group: publish-release
+  cancel-in-progress: false
 
 permissions:
   contents: write
@@ -12,21 +19,70 @@ permissions:
   attestations: write
 
 jobs:
-  binaries:
-    name: Release binaries
+  verify:
+    name: Verify release tag
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.release.outputs.version }}
+      stable: ${{ steps.release.outputs.stable }}
+      commit: ${{ steps.release.outputs.commit }}
+      build_date: ${{ steps.release.outputs.build_date }}
     steps:
-      - name: Check out source
+      - name: Validate semantic version
+        shell: bash
+        run: |
+          identifier='(0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)'
+          semver_re="^v(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-${identifier}(\\.${identifier})*)?$"
+          if [[ ! "$RELEASE_REF" =~ $semver_re ]]; then
+            echo "Release tag must be an exact semantic version beginning with v; build metadata is not supported" >&2
+            exit 1
+          fi
+      - name: Check out release tag
         uses: actions/checkout@v6
         with:
+          ref: ${{ env.RELEASE_REF }}
+          fetch-depth: 0
+      - name: Verify annotated tag
+        shell: bash
+        run: |
+          if ! git cat-file -e "refs/tags/${RELEASE_REF}^{tag}"; then
+            echo "Release tag must be annotated" >&2
+            exit 1
+          fi
+      - name: Capture release metadata
+        id: release
+        shell: bash
+        run: |
+          version="${RELEASE_REF#v}"
+          stable=true
+          if [[ "$version" == *-* ]]; then stable=false; fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "stable=$stable" >> "$GITHUB_OUTPUT"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run release checks
+        run: make check && make test-race
+
+  binaries:
+    name: Release binaries
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_REF }}
           fetch-depth: 0
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
           cache: true
-      - name: Test
-        run: go test ./...
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@v7
         with:
@@ -38,10 +94,13 @@ jobs:
 
   container:
     name: Publish multi-architecture container
+    needs: verify
     runs-on: ubuntu-latest
     steps:
-      - name: Check out source
+      - name: Check out release tag
         uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_REF }}
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4
       - name: Set up Buildx
@@ -65,13 +124,10 @@ jobs:
             ghcr.io/sma-das/abuseipdb-mcp
             docker.io/${{ vars.DOCKERHUB_USERNAME }}/abuseipdb-mcp
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
-            type=raw,value=latest,enable={{is_default_version}}
-      - name: Capture build date
-        id: build
-        run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+            type=semver,pattern={{version}},value=${{ needs.verify.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.verify.outputs.version }},enable=${{ needs.verify.outputs.stable == 'true' }}
+            type=semver,pattern={{major}},value=${{ needs.verify.outputs.version }},enable=${{ needs.verify.outputs.stable == 'true' }}
+            type=raw,value=latest,enable=${{ needs.verify.outputs.stable == 'true' }}
       - name: Build and push
         id: push
         uses: docker/build-push-action@v7
@@ -82,9 +138,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ github.ref_name }}
-            COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ steps.build.outputs.date }}
+            VERSION=${{ needs.verify.outputs.version }}
+            COMMIT=${{ needs.verify.outputs.commit }}
+            BUILD_DATE=${{ needs.verify.outputs.build_date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
       - name: Attest image provenance

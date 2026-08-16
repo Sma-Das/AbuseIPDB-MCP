@@ -21,3 +21,7 @@ Tests must use `httptest`, fake APIs, documentation IP ranges, or in-memory MCP 
 - Use conventional, imperative commit subjects where practical.
 
 By contributing, you agree that your contribution is licensed under the MIT License.
+
+## Releases
+
+Release tags must be annotated, exact semantic versions such as `v1.2.3` or `v1.2.3-rc.1`. Tag only reviewed commits merged to `main`, and never move or reuse an existing release tag. See [RELEASING.md](RELEASING.md) for the complete checklist.
