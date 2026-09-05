@@ -3,32 +3,27 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/csv"
 	"errors"
 	"fmt"
 	"net/netip"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/Sma-Das/AbuseIPDB-MCP/internal/abuseipdb"
+	"github.com/Sma-Das/AbuseIPDB-MCP/internal/reporting"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const (
-	ServerName     = "io.github.sma-das/abuseipdb"
-	MaxBulkCSVSize = 8 << 20
-	MaxBulkRows    = 9999 // AbuseIPDB's 10,000-line cap includes the header.
-)
+const ServerName = "io.github.sma-das/abuseipdb"
 
 // API is the AbuseIPDB behavior used by the MCP handlers.
 type API interface {
 	CheckIP(context.Context, string, int, bool) (*abuseipdb.Response, error)
 	Reports(context.Context, string, int, int, int) (*abuseipdb.Response, error)
 	Blacklist(context.Context, int, int, int, []string, []string) (*abuseipdb.Response, error)
-	Report(context.Context, string, []int, string, string) (*abuseipdb.Response, error)
+	Report(context.Context, reporting.Report) (*abuseipdb.Response, error)
 	CheckBlock(context.Context, string, int) (*abuseipdb.Response, error)
-	BulkReport(context.Context, string) (*abuseipdb.Response, error)
+	BulkReport(context.Context, []reporting.Report) (*abuseipdb.Response, error)
 	ClearAddress(context.Context, string) (*abuseipdb.Response, error)
 }
 
@@ -71,7 +66,7 @@ type ReportIPInput struct {
 	IPAddress  string `json:"ip_address" jsonschema:"IPv4 or IPv6 source address that directly attacked a system you control"`
 	Categories []int  `json:"categories" jsonschema:"One or more AbuseIPDB category IDs from 1 through 23"`
 	Comment    string `json:"comment" jsonschema:"Detailed attack description with all personally identifiable information removed"`
-	ReportedAt string `json:"reported_at,omitempty" jsonschema:"Optional RFC 3339 attack timestamp no older than 60 days; defaults to the current time"`
+	ReportedAt string `json:"reported_at,omitempty" jsonschema:"Optional RFC 3339 attack timestamp no older than 60 days and not in the future; defaults to the current time"`
 	Confirm    bool   `json:"confirm" jsonschema:"Must be true to confirm this external write complies with the AbuseIPDB reporting policy"`
 }
 
@@ -88,7 +83,7 @@ type BulkReportInput struct {
 type BulkReportItem struct {
 	IPAddress  string `json:"ip_address" jsonschema:"IPv4 or IPv6 source address that directly attacked a system you control"`
 	Categories []int  `json:"categories" jsonschema:"One or more AbuseIPDB category IDs from 1 through 23"`
-	ReportedAt string `json:"reported_at" jsonschema:"RFC 3339 attack timestamp no older than 60 days"`
+	ReportedAt string `json:"reported_at" jsonschema:"RFC 3339 attack timestamp no older than 60 days and not in the future"`
 	Comment    string `json:"comment" jsonschema:"Detailed attack description with all personally identifiable information removed"`
 }
 
@@ -100,6 +95,7 @@ type ClearAddressInput struct {
 type CategoriesInput struct{}
 
 func registerTools(server *mcp.Server, api API) {
+	intake := reporting.NewIntake()
 	readOnly := annotations(true, false, true)
 	write := annotations(false, false, true)
 	destructive := annotations(false, true, true)
@@ -176,29 +172,14 @@ func registerTools(server *mcp.Server, api API) {
 		Name: "report_ip", Title: "Report an abusive IP", Annotations: write,
 		Description: "Submit one directly observed attack to AbuseIPDB. This writes external data. Do not report based only on a reputation score, do not include PII, and do not report spoofable traffic.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in ReportIPInput) (*mcp.CallToolResult, any, error) {
-		if !in.Confirm {
-			return nil, nil, errors.New("confirm must be true before submitting an external abuse report")
-		}
-		ip, err := normalizeIP(in.IPAddress)
+		report, err := intake.Single(reporting.Draft{
+			IPAddress: in.IPAddress, Categories: in.Categories,
+			Comment: in.Comment, ReportedAt: in.ReportedAt,
+		}, in.Confirm)
 		if err != nil {
 			return nil, nil, err
 		}
-		categories, err := normalizeCategories(in.Categories)
-		if err != nil {
-			return nil, nil, err
-		}
-		comment := strings.TrimSpace(in.Comment)
-		if comment == "" {
-			return nil, nil, errors.New("comment is required by the AbuseIPDB reporting policy")
-		}
-		if len(comment) > 1024 {
-			return nil, nil, errors.New("comment must not exceed 1024 bytes")
-		}
-		timestamp, err := validateTimestamp(in.ReportedAt, false, time.Now())
-		if err != nil {
-			return nil, nil, err
-		}
-		return apiResult(api.Report(ctx, ip, categories, comment, timestamp))
+		return apiResult(api.Report(ctx, report))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -220,14 +201,18 @@ func registerTools(server *mcp.Server, api API) {
 		Name: "bulk_report", Title: "Bulk-report abusive IPs", Annotations: write,
 		Description: "Submit up to 9,999 directly observed attacks through AbuseIPDB's bulk CSV endpoint. This writes external data. Every row must omit PII and comply with the reporting policy.",
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in BulkReportInput) (*mcp.CallToolResult, any, error) {
-		if !in.Confirm {
-			return nil, nil, errors.New("confirm must be true before bulk-submitting external abuse reports")
+		drafts := make([]reporting.Draft, len(in.Reports))
+		for index, report := range in.Reports {
+			drafts[index] = reporting.Draft{
+				IPAddress: report.IPAddress, Categories: report.Categories,
+				Comment: report.Comment, ReportedAt: report.ReportedAt,
+			}
 		}
-		csvData, err := buildBulkCSV(in.Reports, time.Now())
+		reports, err := intake.Bulk(drafts, in.Confirm)
 		if err != nil {
 			return nil, nil, err
 		}
-		return apiResult(api.BulkReport(ctx, csvData))
+		return apiResult(api.BulkReport(ctx, reports))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -248,7 +233,7 @@ func registerTools(server *mcp.Server, api API) {
 		Name: "list_categories", Title: "List AbuseIPDB categories", Annotations: closedWorld,
 		Description: "List all official AbuseIPDB report category IDs, names, and descriptions. Use this before report_ip or bulk_report when category IDs are unknown.",
 	}, func(context.Context, *mcp.CallToolRequest, CategoriesInput) (*mcp.CallToolResult, any, error) {
-		return nil, map[string]any{"categories": Categories}, nil
+		return nil, map[string]any{"categories": reporting.Categories}, nil
 	})
 }
 
@@ -295,26 +280,6 @@ func normalizeNetwork(raw string) (string, error) {
 	return prefix.Masked().String(), nil
 }
 
-func normalizeCategories(values []int) ([]int, error) {
-	if len(values) == 0 {
-		return nil, errors.New("at least one category is required")
-	}
-	seen := make(map[int]struct{}, len(values))
-	result := make([]int, 0, len(values))
-	for _, value := range values {
-		if !validCategory(value) {
-			return nil, fmt.Errorf("category %d is invalid; valid category IDs are 1 through 23", value)
-		}
-		if _, exists := seen[value]; exists {
-			continue
-		}
-		seen[value] = struct{}{}
-		result = append(result, value)
-	}
-	sort.Ints(result)
-	return result, nil
-}
-
 func normalizeCountries(values []string) ([]string, error) {
 	seen := make(map[string]struct{}, len(values))
 	result := make([]string, 0, len(values))
@@ -331,24 +296,6 @@ func normalizeCountries(values []string) ([]string, error) {
 	}
 	sort.Strings(result)
 	return result, nil
-}
-
-func validateTimestamp(raw string, required bool, now time.Time) (string, error) {
-	raw = strings.TrimSpace(raw)
-	if raw == "" {
-		if required {
-			return "", errors.New("reported_at is required")
-		}
-		return "", nil
-	}
-	t, err := time.Parse(time.RFC3339, raw)
-	if err != nil {
-		return "", errors.New("reported_at must be an RFC 3339 timestamp with a timezone")
-	}
-	if t.Before(now.Add(-60 * 24 * time.Hour)) {
-		return "", errors.New("reported_at must not be older than 60 days")
-	}
-	return t.Format(time.RFC3339), nil
 }
 
 func withDefaultRange(name string, value, fallback, min, max int) (int, error) {
@@ -369,59 +316,4 @@ func withDefaultMin(name string, value, fallback, min int) (int, error) {
 		return 0, fmt.Errorf("%s must be at least %d", name, min)
 	}
 	return value, nil
-}
-
-func buildBulkCSV(reports []BulkReportItem, now time.Time) (string, error) {
-	if len(reports) == 0 {
-		return "", errors.New("reports must contain at least one row")
-	}
-	if len(reports) > MaxBulkRows {
-		return "", fmt.Errorf("reports must contain at most %d rows", MaxBulkRows)
-	}
-
-	var b strings.Builder
-	w := csv.NewWriter(&b)
-	if err := w.Write([]string{"IP", "Categories", "ReportDate", "Comment"}); err != nil {
-		return "", fmt.Errorf("write bulk report header: %w", err)
-	}
-	for i, report := range reports {
-		ip, err := normalizeIP(report.IPAddress)
-		if err != nil {
-			return "", fmt.Errorf("reports[%d]: %w", i, err)
-		}
-		categories, err := normalizeCategories(report.Categories)
-		if err != nil {
-			return "", fmt.Errorf("reports[%d]: %w", i, err)
-		}
-		timestamp, err := validateTimestamp(report.ReportedAt, true, now)
-		if err != nil {
-			return "", fmt.Errorf("reports[%d]: %w", i, err)
-		}
-		comment := strings.TrimSpace(report.Comment)
-		if comment == "" {
-			return "", fmt.Errorf("reports[%d]: comment is required", i)
-		}
-		if len(comment) > 1024 {
-			return "", fmt.Errorf("reports[%d]: comment must not exceed 1024 bytes", i)
-		}
-		if err := w.Write([]string{ip, joinCategories(categories), timestamp, comment}); err != nil {
-			return "", fmt.Errorf("write reports[%d]: %w", i, err)
-		}
-	}
-	w.Flush()
-	if err := w.Error(); err != nil {
-		return "", fmt.Errorf("build bulk report CSV: %w", err)
-	}
-	if b.Len() >= MaxBulkCSVSize {
-		return "", fmt.Errorf("generated CSV must be under %d bytes", MaxBulkCSVSize)
-	}
-	return b.String(), nil
-}
-
-func joinCategories(values []int) string {
-	parts := make([]string, len(values))
-	for i, value := range values {
-		parts[i] = fmt.Sprintf("%d", value)
-	}
-	return strings.Join(parts, ",")
 }

@@ -2,20 +2,22 @@ package mcpserver
 
 import (
 	"context"
-	"encoding/csv"
+	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Sma-Das/AbuseIPDB-MCP/internal/abuseipdb"
+	"github.com/Sma-Das/AbuseIPDB-MCP/internal/reporting"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type fakeAPI struct {
-	lastCall string
-	lastCSV  string
-	err      error
+	lastCall    string
+	lastReport  reporting.Report
+	lastReports []reporting.Report
+	err         error
 }
 
 func (f *fakeAPI) result(name string) (*abuseipdb.Response, error) {
@@ -39,14 +41,15 @@ func (f *fakeAPI) Reports(context.Context, string, int, int, int) (*abuseipdb.Re
 func (f *fakeAPI) Blacklist(context.Context, int, int, int, []string, []string) (*abuseipdb.Response, error) {
 	return f.result("get_blacklist")
 }
-func (f *fakeAPI) Report(context.Context, string, []int, string, string) (*abuseipdb.Response, error) {
+func (f *fakeAPI) Report(_ context.Context, report reporting.Report) (*abuseipdb.Response, error) {
+	f.lastReport = report
 	return f.result("report_ip")
 }
 func (f *fakeAPI) CheckBlock(context.Context, string, int) (*abuseipdb.Response, error) {
 	return f.result("check_block")
 }
-func (f *fakeAPI) BulkReport(_ context.Context, csvData string) (*abuseipdb.Response, error) {
-	f.lastCSV = csvData
+func (f *fakeAPI) BulkReport(_ context.Context, reports []reporting.Report) (*abuseipdb.Response, error) {
+	f.lastReports = reports
 	return f.result("bulk_report")
 }
 func (f *fakeAPI) ClearAddress(context.Context, string) (*abuseipdb.Response, error) {
@@ -87,6 +90,15 @@ func TestMCPServerListsCompleteSurface(t *testing.T) {
 	if byName["report_ip"].Annotations.ReadOnlyHint {
 		t.Error("report_ip is incorrectly annotated read-only")
 	}
+	for _, name := range []string{"report_ip", "bulk_report"} {
+		schema, err := json.Marshal(byName[name].InputSchema)
+		if err != nil {
+			t.Fatalf("marshal %s input schema: %v", name, err)
+		}
+		if !strings.Contains(string(schema), "not in the future") {
+			t.Errorf("%s input schema omits the future-date restriction: %s", name, schema)
+		}
+	}
 
 	resources, err := session.ListResources(ctx, nil)
 	if err != nil {
@@ -101,6 +113,13 @@ func TestMCPServerListsCompleteSurface(t *testing.T) {
 	}
 	if len(read.Contents) != 1 || !strings.Contains(read.Contents[0].Text, "DNS Compromise") {
 		t.Fatalf("unexpected categories resource: %+v", read.Contents)
+	}
+	policy, err := session.ReadResource(ctx, &mcp.ReadResourceParams{URI: "abuseipdb://reporting-policy"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(policy.Contents) != 1 || !strings.Contains(policy.Contents[0].Text, "or in the future") {
+		t.Fatalf("reporting policy omits the future-date restriction: %+v", policy.Contents)
 	}
 }
 
@@ -137,8 +156,12 @@ func TestMCPToolsInvokeEveryAPIEndpoint(t *testing.T) {
 			}
 		})
 	}
-	if !strings.Contains(api.lastCSV, "IP,Categories,ReportDate,Comment") || !strings.Contains(api.lastCSV, "192.0.2.3") {
-		t.Fatalf("bulk CSV was not generated correctly: %q", api.lastCSV)
+	if api.lastReport.IPAddress != "192.0.2.2" || len(api.lastReport.Categories) != 2 ||
+		api.lastReport.Categories[0] != 18 || api.lastReport.Categories[1] != 22 {
+		t.Fatalf("single report was not normalized: %+v", api.lastReport)
+	}
+	if len(api.lastReports) != 1 || api.lastReports[0].IPAddress != "192.0.2.3" {
+		t.Fatalf("bulk reports were not normalized: %+v", api.lastReports)
 	}
 }
 
@@ -193,50 +216,11 @@ func TestValidationHelpers(t *testing.T) {
 	if got, err := normalizeNetwork("192.0.2.99/24"); err != nil || got != "192.0.2.0/24" {
 		t.Fatalf("normalizeNetwork = %q, %v", got, err)
 	}
-	if got, err := normalizeCategories([]int{22, 18, 22}); err != nil || joinCategories(got) != "18,22" {
-		t.Fatalf("normalizeCategories = %v, %v", got, err)
-	}
-	if _, err := normalizeCategories([]int{0}); err == nil {
-		t.Error("invalid category was accepted")
-	}
 	if got, err := normalizeCountries([]string{"us", "CA", "US"}); err != nil || strings.Join(got, ",") != "CA,US" {
 		t.Fatalf("normalizeCountries = %v, %v", got, err)
 	}
 	if _, err := normalizeCountries([]string{"USA"}); err == nil {
 		t.Error("invalid country was accepted")
-	}
-}
-
-func TestBuildBulkCSV(t *testing.T) {
-	now := time.Date(2026, 8, 10, 12, 0, 0, 0, time.UTC)
-	reports := []BulkReportItem{{
-		IPAddress: "2001:db8::1", Categories: []int{22, 18},
-		ReportedAt: "2026-08-09T12:00:00Z", Comment: "attempt, with comma",
-	}}
-	data, err := buildBulkCSV(reports, now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	r := csv.NewReader(strings.NewReader(data))
-	rows, err := r.ReadAll()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(rows) != 2 || rows[1][1] != "18,22" || rows[1][3] != reports[0].Comment {
-		t.Fatalf("CSV rows = %#v", rows)
-	}
-
-	invalid := []BulkReportItem{{
-		IPAddress: "not-an-ip", Categories: []int{14},
-		ReportedAt: "2026-08-09T12:00:00Z", Comment: "scan",
-	}}
-	if _, err := buildBulkCSV(invalid, now); err == nil {
-		t.Error("invalid bulk row was accepted")
-	}
-	old := reports
-	old[0].ReportedAt = "2026-01-01T00:00:00Z"
-	if _, err := buildBulkCSV(old, now); err == nil {
-		t.Error("old bulk report was accepted")
 	}
 }
 
@@ -259,6 +243,40 @@ func connectTestClient(t *testing.T, server *mcp.Server) *mcp.ClientSession {
 		_ = serverSession.Close()
 	})
 	return clientSession
+}
+
+func TestWriteToolsRejectFutureReportsBeforeCallingAPI(t *testing.T) {
+	api := &fakeAPI{}
+	session := connectTestClient(t, New(api, "test"))
+	future := time.Now().UTC().Add(time.Hour).Format(time.RFC3339)
+	for _, tt := range []struct {
+		name string
+		args map[string]any
+	}{
+		{"report_ip", map[string]any{
+			"ip_address": "192.0.2.1", "categories": []int{14}, "comment": "scan",
+			"reported_at": future, "confirm": true,
+		}},
+		{"bulk_report", map[string]any{
+			"reports": []map[string]any{{
+				"ip_address": "192.0.2.1", "categories": []int{14}, "comment": "scan", "reported_at": future,
+			}},
+			"confirm": true,
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := session.CallTool(context.Background(), &mcp.CallToolParams{Name: tt.name, Arguments: tt.args})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !result.IsError || !strings.Contains(result.Content[0].(*mcp.TextContent).Text, "in the future") {
+				t.Fatalf("future report result = %+v", result)
+			}
+		})
+	}
+	if api.lastCall != "" {
+		t.Fatalf("API was called unexpectedly: %s", api.lastCall)
+	}
 }
 
 func TestAPIResultHandlesGenericError(t *testing.T) {

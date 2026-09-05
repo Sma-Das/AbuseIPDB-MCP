@@ -1,4 +1,5 @@
-package mcpserver
+// Package reporting validates AbuseIPDB report intake.
+package reporting
 
 // Category is an AbuseIPDB report category.
 type Category struct {

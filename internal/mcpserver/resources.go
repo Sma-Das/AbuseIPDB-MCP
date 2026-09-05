@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/Sma-Das/AbuseIPDB-MCP/internal/reporting"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -13,7 +14,7 @@ const reportingPolicy = `AbuseIPDB reporting safety summary:
 - Do not report an address based only on its AbuseIPDB confidence score.
 - Remove personally identifiable information from comments.
 - Do not report traffic whose source is likely spoofed, including SYN or UDP floods.
-- Reports must describe the attack and must not be older than 60 days.
+- Reports must describe the attack; timestamps must not be older than 60 days or in the future.
 - A timestamp, destination port, and relevant payload detail are recommended.
 
 Authoritative policy: https://www.abuseipdb.com/reporting-policy
@@ -25,7 +26,7 @@ func registerResources(server *mcp.Server) {
 		Description: "The complete category ID reference for AbuseIPDB reports.",
 		MIMEType:    "application/json", URI: "abuseipdb://categories",
 	}, func(_ context.Context, req *mcp.ReadResourceRequest) (*mcp.ReadResourceResult, error) {
-		data, err := json.MarshalIndent(map[string]any{"categories": Categories}, "", "  ")
+		data, err := json.MarshalIndent(map[string]any{"categories": reporting.Categories}, "", "  ")
 		if err != nil {
 			return nil, fmt.Errorf("encode categories: %w", err)
 		}

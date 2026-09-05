@@ -146,7 +146,7 @@ Before reporting an IP:
 - Never report an address solely because its AbuseIPDB confidence score is high.
 - Strip names, email addresses, credentials, and other personally identifiable information from comments.
 - Do not report traffic whose source can be spoofed, such as SYN floods and UDP floods.
-- Describe the event and include a timezone-aware timestamp; reports must not be older than 60 days.
+- Describe the event and include a timezone-aware timestamp; reports must not be older than 60 days or dated in the future.
 - Remember that AbuseIPDB prevents duplicate reports for the same address within 15 minutes.
 
 Read the authoritative [AbuseIPDB reporting policy](https://www.abuseipdb.com/reporting-policy) before enabling write tools in unattended automation.
@@ -216,7 +216,8 @@ Project layout:
 cmd/abuseipdb-mcp/  CLI, stdio transport, HTTP transport, health endpoint
 internal/abuseipdb/ AbuseIPDB API v2 client and error/rate-limit handling
 internal/config/    environment configuration and validation
-internal/mcpserver/ MCP tools, resources, category data, and safety validation
+internal/mcpserver/ MCP tools, resources, and protocol adapters
+internal/reporting/ Report intake, categories, and safety validation
 examples/           client and tool-call examples
 ```
 
